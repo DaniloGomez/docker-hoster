@@ -59,27 +59,34 @@ def main():
 def get_container_data(dockerClient, container_id):
     #extract all the info with the docker api
     info = dockerClient.inspect_container(container_id)
-    container_hostname = info["Config"]["Hostname"]
+    config = info["Config"]
+    container_hostname = config["Hostname"]
     container_name = info["Name"].strip("/")
     container_ip = info["NetworkSettings"]["IPAddress"]
     
-    result = []
+    is_traefik = config["Image"].startswith("traefik:")
 
+    networks = []
     for values in info["NetworkSettings"]["Networks"].values():
-        
         if not values["Aliases"]: 
             continue
-
-        result.append({
+        networks.append({
                 "ip": values["IPAddress"] , 
                 "name": container_name,
                 "domains": set(values["Aliases"] + [container_name, container_hostname])
             })
 
     if container_ip:
-        result.append({"ip": container_ip, "name": container_name, "domains": [container_name, container_hostname ]})
+        networks.append({"ip": container_ip, "name": container_name, "domains": [container_name, container_hostname ]})
 
-    return result
+    traefik_hosts = set()
+    for label, val in config["Labels"].items():
+        if label == "traefik.frontend.rule":
+            if val.startswith("Host:"):
+                traefik_hosts.update(val[5:].strip().split(","))
+            break
+
+    return {"networks": networks, "traefik_hosts": traefik_hosts, "is_traefik": is_traefik}
 
 
 def update_hosts_file():
@@ -88,9 +95,17 @@ def update_hosts_file():
     else:
         print("Updating hosts file with:")
 
-    for id,addresses in hosts.items():
-        for addr in addresses:
-            print("ip: %s domains: %s" % (addr["ip"], addr["domains"]))
+    traefik_addr = ""
+    traefik_hosts = set()
+    for container in hosts.values():
+        #collect all traefik hosts
+        traefik_hosts |= container["traefik_hosts"]
+        #take first traefik container ip address
+        if container["is_traefik"] and not traefik_addr:
+            for addr in container["networks"]:
+                traefik_addr = addr["ip"]
+                if traefik_addr:
+                    break
 
     #read all the lines of thge original file
     lines = []
@@ -106,14 +121,24 @@ def update_hosts_file():
     #remove all the trailing newlines on the line list
     while lines[-1].strip()=="": lines.pop()
 
+    end = len(lines)
     #append all the domain lines
     if len(hosts)>0:
         lines.append("\n\n"+enclosing_pattern)
-        
-        for id, addresses in hosts.items():
-            for addr in addresses:
-                lines.append("%s    %s\n"%(addr["ip"],"   ".join(addr["domains"])))
-        
+        for id, container in hosts.items():
+            #make non traefik hosts point to its own container
+            for addr in container["networks"]:
+                domains = addr["domains"]
+                if traefik_addr:
+                    # remove traefik hosts
+                    domains -= traefik_hosts
+                lines.append("%s    %s\n"%(addr["ip"],"   ".join(domains)))
+
+        if traefik_addr and traefik_hosts:
+            #make traefik hosts point to traefik container
+            lines.append("\n#-----------Traefik-Hosts-----------\n")
+            lines.append("%s    %s\n\n"%(traefik_addr,"   ".join(traefik_hosts)))
+
         lines.append("#-----Do-not-add-hosts-after-this-line-----\n\n")
 
     #write it on the auxiliar file
@@ -123,6 +148,7 @@ def update_hosts_file():
 
     #replace etc/hosts with aux file, making it atomic
     shutil.move(aux_file_path, hosts_path)
+    print(''.join(lines[end:]))
 
 
 def parse_args():
