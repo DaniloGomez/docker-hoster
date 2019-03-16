@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  docker-hoster:
+    image: dvdarias/docker-hoster:traefik
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+      - /etc/hosts:/tmp/hosts
