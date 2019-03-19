@@ -77,7 +77,7 @@ def get_container_data(dockerClient, container_id):
             })
 
     if container_ip:
-        networks.append({"ip": container_ip, "name": container_name, "domains": [container_name, container_hostname ]})
+        networks.append({"ip": container_ip, "name": container_name, "domains": {container_name, container_hostname }})
 
     traefik_hosts = set()
     for label, val in config["Labels"].items():
