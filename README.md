@@ -25,6 +25,16 @@ For example, the following container would be available via DNS as `myname`, `my
         --network somenetwork --network-alias "myserver.com" \
         mycontainer
 
+### Traefik (Træfik) compatibility
+If there is a running container of the image `traefik`, it will be pointed by all the domain domain-names appearing in containers labeled as `traefik.frontend.rule=<domain-name>`.
+
+## TODO*:
+* Update to traefik 2.0 specicication
+* Give a detailed usable example
+
+
+## Note
+
 If you need more features like **systemd integration** and **dns forwarding** please check [resolvable](https://hub.docker.com/r/mgood/resolvable/)
 
-Any contribution is, of course, welcome. :)
+Any contribution is, of course, welcome. ;)
